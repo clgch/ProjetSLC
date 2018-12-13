@@ -1,2 +1,2 @@
 # ProjetSLC
-Project to implement finite volumes methods for hyperboiic PDEs
+Project to implement finite volumes methods for hyperbolic PDEs
