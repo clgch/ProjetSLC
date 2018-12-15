@@ -3,6 +3,7 @@
 #include <math.h>
 #include <iostream>
 #include <string.h>
+#include <algorithm>
 
 void data_export(const char *_file_name,
                  const int _Nx,
@@ -15,6 +16,8 @@ void upwind(const int Nx, const int Ny, double a_x, double a_y, const double CFL
 
 void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const double CFL);
 
+void lax_wendorff(const int Nx, const int Ny, double a_x, double a_y, const double CFL);
+
 inline double circle(const double _x, const double _y) {
   if (_x*_x + _y*_y < 0.01) {
     return 1;
@@ -23,9 +26,14 @@ inline double circle(const double _x, const double _y) {
   }
 }
 
+inline double gaussian_kernel(const double _x, const double _y) {
+  return exp(-(_x*_x + _y *_y)/0.01);
+}
+
 int main() {
-	upwind(100, 100, 1, 1, 0.5);
-  alternate_upwind(100, 100, 1, 1, 0.5);
+	upwind(200, 200, 1, 1, 1.05);
+  alternate_upwind(200, 200, 1, 1, 1.05);
+  lax_wendorff(100, 100, 1, 1, 1.05);
 	return 0;
 }
 
@@ -82,7 +90,8 @@ void upwind(const int Nx, const int Ny, double a_x, double a_y, const double CFL
     u0[i] = new double[Ny + 2];
     u1[i] = new double[Ny + 2];
     for (int j = 0; j < Ny + 2; j++) {
-      u0[i][j] = circle(x[i], y[j]);
+      //u0[i][j] = circle(x[i], y[j]);
+      u0[i][j] = gaussian_kernel(x[i], y[j]);
       u1[i][j] = 0.0;
     }
   }
@@ -116,7 +125,7 @@ void upwind(const int Nx, const int Ny, double a_x, double a_y, const double CFL
   
     for (int i = 1; i < Nx + 1; i++) {
       for (int j = 1; j < Ny + 1; j++) {
-        u1[i][j] = u0[i][j] - (u_star_x[i][j] - u_star_x[i - 1][j])*(step/step_x) - (u_star_y[i][j] - u_star_y[i][j - 1])*(step/step_y);
+        u1[i][j] = u0[i][j] - a_x*(u_star_x[i][j] - u_star_x[i - 1][j])*(step/step_x) - a_y*(u_star_y[i][j] - u_star_y[i][j - 1])*(step/step_y);
         u0[i][j] = u1[i][j];
       }
     }
@@ -167,7 +176,7 @@ void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const 
   const double step_x = (x_max - x_min)/double(Nx);
   const double step_y = (y_max - y_min)/double(Ny);
 
-  const double step = 0.001;
+  const double step = fabs(step_x * step_y)/(a_x * a_y) * CFL;
   const int N = int(t_max/step);
 
   double **u0;
@@ -201,7 +210,8 @@ void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const 
     u1_tilde[i] = new double[Ny + 2];
 
     for (int j = 0; j < Ny + 2; j++) {
-      u0[i][j] = circle(x[i], y[j]);
+      //u0[i][j] = circle(x[i], y[j]);
+      u0[i][j] = gaussian_kernel(x[i], y[j]);
       u1[i][j] = 0.0;
       u1_tilde[i][j] = 0.0;
     }
@@ -229,7 +239,7 @@ void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const 
 
     for (int i = 1; i < Nx + 1; i++) {
       for (int j = 1; j < Ny + 1; j++) {
-        u1_tilde[i][j] = u0[i][j] - (u_star_x[i][j] - u_star_x[i - 1][j])*(step/step_x);
+        u1_tilde[i][j] = u0[i][j] - a_x*(u_star_x[i][j] - u_star_x[i - 1][j])*(step/step_x);
       }
     }
 
@@ -242,7 +252,7 @@ void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const 
 
     for (int i = 1; i < Nx + 1; i++) {
       for (int j = 1; j < Ny + 1; j++) {
-        u1[i][j] = u1_tilde[i][j] - (u_star_tilde_y[i][j] - u_star_tilde_y[i][j - 1])*(step/step_y);
+        u1[i][j] = u1_tilde[i][j] - a_y*(u_star_tilde_y[i][j] - u_star_tilde_y[i][j - 1])*(step/step_y);
         u0[i][j] = u1[i][j];
       }
     }
@@ -267,6 +277,113 @@ void alternate_upwind(const int Nx, const int Ny, double a_x, double a_y, const 
     delete [] u_star_tilde_y[i];
   }
   delete [] u_star_tilde_y;
+
+  delete [] x;
+  delete [] y;
+}
+
+
+void lax_wendorff(const int Nx, const int Ny, double a_x, double a_y, const double CFL) {
+
+  const double x_min = -1.;
+  const double x_max = 1.;
+  const double y_min = -1.;
+  const double y_max = 1.;
+
+  double *x;
+  x = new double[Nx + 2];
+
+  for (int i = 0; i < Nx + 2; i++) {
+    x[i] = x_min + (x_max - x_min)/double(Nx)*(double(i) + 0.5); 
+  }
+
+  double *y;
+  y = new double[Ny + 2];
+
+  for (int j = 0; j < Ny + 2; j++) {
+    y[j] = y_min + (y_max - y_min)/double(Ny)*(double(j) + 0.5);
+  }
+
+  const double t_max = 0.1;
+  const double step_x = (x_max - x_min)/double(Nx);
+  const double step_y = (y_max - y_min)/double(Ny);
+
+  //const double step = 1/(sqrt( (a_x/step_x)*(a_x/step_x) + (a_y/step_y)*(a_y/step_y) )) * CFL;
+  const double step = std::min(step_x/a_x, step_y/a_y) * CFL;
+  const int N = int(t_max/step);
+
+  double **u0;
+  double **u1;
+
+  double **u_lw_x;
+  double **u_lw_y;
+
+
+  u0 = new double *[Nx + 2];
+  u1 = new double *[Nx + 2];
+
+  u_lw_y = new double *[Nx + 2];
+  u_lw_x = new double *[Nx + 1];
+
+  for (int i = 0; i < Nx + 2; i++) {
+    u_lw_y[i] = new double[Ny + 1]; 
+  } 
+
+  for (int fi = 0; fi < Nx + 1; fi++) {
+    u_lw_x[fi] = new double[Ny + 2];
+  }
+
+
+  for (int i = 0; i < Nx + 2; i++) {
+    u0[i] = new double[Ny + 2];
+    u1[i] = new double[Ny + 2];
+
+    for (int j = 0; j < Ny + 2; j++) {
+      //u0[i][j] = circle(x[i], y[j]);
+      u0[i][j] = gaussian_kernel(x[i], x[j]);
+      u1[i][j] = 0.0;
+    }
+  }
+
+
+  data_export("lw0", Nx, Ny, x, y, (const double **)u0);
+  for (int t = 0; t < N; t++) {
+    for (int fi = 0; fi < Nx + 1; fi++) {
+      for (int j = 0; j < Ny + 2; j++) {
+        u_lw_x[fi][j] = a_x*(u0[fi][j] + u0[fi + 1][j])/2 - step/(2*step_x)*a_x*a_x*(u0[fi + 1][j] - u0[fi][j]);
+      }
+    }
+
+    for (int i = 0; i < Nx + 2; i++) {
+      for (int fj = 0; fj < Ny + 1; fj++) {
+        u_lw_y[i][fj] = a_y*(u0[i][fj] + u0[i][fj + 1])/2 - step/(2*step_y)*a_y*a_y*(u0[i][fj + 1] - u0[i][fj]);
+      }
+    }
+
+    for (int i = 1; i < Nx + 1; i++) {
+      for (int j = 1; j < Ny + 1; j++) {
+        u1[i][j] = u0[i][j] - a_x*(u_lw_x[i][j] - u_lw_x[i - 1][j])*(step/step_x) - a_y*(u_lw_y[i][j] - u_lw_y[i][j - 1])*(step/step_y);
+        u0[i][j] = u1[i][j];
+      }
+    }
+  }
+
+  data_export("lw1", Nx, Ny, x, y, (const double **)u0);
+
+  for (int nx  = 0; nx < Nx + 2; nx++) {
+  delete [] u0[nx];
+  delete [] u1[nx];
+  }
+  delete [] u0;
+  delete [] u1;
+  for (int fi = 0; fi < Nx + 1; fi++) {
+    delete [] u_lw_x[fi];
+  }
+  delete [] u_lw_x;
+  for (int fi = 0; fi < Nx + 2; fi++) {
+    delete [] u_lw_y[fi];
+  }
+  delete [] u_lw_y;
 
   delete [] x;
   delete [] y;
